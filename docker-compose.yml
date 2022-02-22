@@ -6,7 +6,7 @@ services:
   # It provides distributed coordination for our Kafka cluster.
   # http://zookeeper.apache.org/
   zookeeper:
-    image: zookeeper:3.4.9
+    image: zookeeper:3.5.9
     # ZooKeeper is designed to "fail-fast", so it is important to allow it to
     # restart automatically.
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
   # real-time streaming applications that transform or react to the streams of data.
   # http://kafka.apache.org/
   kafka:
-    image: confluentinc/cp-kafka:4.1.0
+    image: confluentinc/cp-kafka:7.0.1
     hostname: kafka
     ports:
       - "9092:9092"
@@ -39,6 +39,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     volumes:
       - ./volumes/kafka/data:/var/lib/kafka/data
+    command: "bash -c 'echo Waiting for Kafka to be ready... && cub kafka-ready -b broker:9092 1 60 && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic orders && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic order-validations && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic warehouse-inventory && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic customers && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic payments && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic platinum && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic gold && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic silver && kafka-topics --create --if-not-exists --zookeeper zookeeper:2181 --partitions 1 --replication-factor 1 --topic bronze && '"
     # As Kafka relies upon ZooKeeper, this will instruct docker to wait until the zookeeper service
     # is up before attempting to start Kafka.
     depends_on:
@@ -49,15 +50,17 @@ services:
   # organization and safely evolve them in a way that is backward compatible and future proof.
   # https://www.confluent.io/confluent-schema-registry/
   schema-registry:
-    image: confluentinc/cp-schema-registry:4.1.0
+    image: confluentinc/cp-schema-registry:7.0.1
     hostname: schema-registry
-    restart: unless-stopped
+    # restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
       # Required. Schema Registry will contact ZooKeeper to figure out how to connect
       # to the Kafka cluster.
       SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: zookeeper:2181
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "PLAINTEXT://kafka:9092"
+
       # Required. This is the hostname that Schema Registry will advertise in ZooKeeper.
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
     # Schema Registry relies upon both Kafka and ZooKeeper. This will instruct docker to wait
@@ -70,7 +73,7 @@ services:
   # history & configure Avro schemas of your Kafka cluster.
   # https://github.com/Landoop/schema-registry-ui
   schema-registry-ui:
-    image: landoop/schema-registry-ui:0.9.4
+    image: landoop/schema-registry-ui:0.9.5
     hostname: schema-registry-ui
     # schema-registry-ui binds to port 8000, but we are going to expose it on our local
     # machine on port 8001.
@@ -92,7 +95,7 @@ services:
   # the native Kafka protocol or clients.
   # https://github.com/confluentinc/kafka-rest
   kafka-rest-proxy:
-    image: confluentinc/cp-kafka-rest:4.1.0
+    image: confluentinc/cp-kafka-rest:7.0.1
     hostname: kafka-rest-proxy
     ports:
       - "8082:8082"
@@ -126,7 +129,7 @@ services:
   # (kafka messages) / view topic configuration / download data.
   # https://github.com/Landoop/kafka-topics-ui
   kafka-topics-ui:
-    image: landoop/kafka-topics-ui:0.9.3
+    image: landoop/kafka-topics-ui:0.9.4
     hostname: kafka-topics-ui
     ports:
       - "8000:8000"
@@ -146,7 +149,7 @@ services:
   # such as databases, key-value stores, search indexes, and file systems.
   # https://docs.confluent.io/current/connect/index.html
   kafka-connect:
-    image: confluentinc/cp-kafka-connect:4.1.0
+    image: confluentinc/cp-kafka-connect:7.0.1
     hostname: kafka-connect
     ports:
       - "8083:8083"
@@ -196,7 +199,7 @@ services:
   # This is a web tool for Kafka Connect for setting up and managing connectors for multiple connect clusters.
   # https://github.com/Landoop/kafka-connect-ui
   kafka-connect-ui:
-    image: landoop/kafka-connect-ui:0.9.4
+    image: landoop/kafka-connect-ui:0.9.7
     hostname: kafka-connect-ui
     # kafka-connect-ui binds to port 8000, but we are going to expose it on our local
     # machine on port 8002.
@@ -213,38 +216,15 @@ services:
     depends_on:
       - kafka-connect
 
-  # API for ZooNavigator, web-based browser & editor for ZooKeeper.
-  # https://github.com/elkozmon/zoonavigator-api
-  zoonavigator-api:
-    image: elkozmon/zoonavigator-api:0.4.0
+  # https://github.com/elkozmon/zoonavigator
+  zoonavigator:
+    image: elkozmon/zoonavigator:1.1.1
+    ports:
+      - "9000:9000"
     environment:
-      # The port on which the api service will listen for incoming connections.
-      SERVER_HTTP_PORT: 9000
-    restart: unless-stopped
-    # zoonavigator-api relies upon ZooKeeper.
-    # This will instruct docker to wait until those services are up
-    # before attempting to start zoonavigator-api.
+      API_PORT: 9000
     depends_on:
       - zookeeper
-
-  # Web client for ZooNavigator, web-based browser & editor for ZooKeeper.
-  # https://github.com/elkozmon/zoonavigator-web
-  zoonavigator-web:
-    image: elkozmon/zoonavigator-web:0.4.0
-    # zoonavigator-web binds to port 8000, but we are going to expose it on our local
-    # machine on port 8002.
-    ports:
-      - "8003:8000"
-    environment:
-      # The following two keys instruct the web component how to connect to
-      # the backing api component.
-      API_HOST: "zoonavigator-api"
-      API_PORT: 9000
-    # zoonavigator-web relies upon zoonavigator-api.
-    # This will instruct docker to wait until those services are up
-    # before attempting to start zoonavigator-web.
-    depends_on:
-      - zoonavigator-api
     restart: unless-stopped
 
   # KSQL is the open source streaming SQL engine for Apache Kafka.
@@ -255,7 +235,7 @@ services:
   # including data filtering, transformations, aggregations, joins, windowing, and sessionization.
   # https://docs.confluent.io/current/ksql/docs/
   ksql-server:
-    image: confluentinc/cp-ksql-server:5.0.0
+    image: confluentinc/cp-ksql-server:5.4.6
     ports:
       - "8088:8088"
     environment:
